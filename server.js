@@ -5,7 +5,6 @@ const app = express();
 
 app.use(express.json());
 
-// API routes first
 app.get("/api/message", (req, res) => {
   res.json({ message: "Hello from GET" });
 });
@@ -18,10 +17,8 @@ app.post("/api/message", (req, res) => {
   });
 });
 
-// Serve React build
 app.use(express.static(path.join(__dirname, "client", "dist")));
 
-// React fallback route
 app.get("/{*splat}", (req, res) => {
   res.sendFile(path.join(__dirname, "client", "dist", "index.html"));
 });
