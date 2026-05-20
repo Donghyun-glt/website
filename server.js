@@ -1,9 +1,18 @@
 const express = require("express");
-
 const app = express();
 
-app.get("/", (req, res) => {
-  res.send("website");
+app.use(express.json());
+
+app.get("/api/message", (req, res) => {
+  res.json({ message: "Hello from GET" });
+});
+
+app.post("/api/message", (req, res) => {
+  const { word } = req.body;
+
+  res.json({
+    message: `You sent: ${word}`
+  });
 });
 
 const PORT = process.env.PORT || 3000;
