@@ -1,30 +1,47 @@
-import { useState } from "react";
-import axios from "axios";
+import { useRef, useState } from "react";
+import videoFile from "./video.mp4";
 
 function App() {
-  const [result, setResult] = useState("");
+  const videoRef = useRef(null);
+  const [currentTime, setCurrentTime] = useState(0);
 
-  async function getMessage() {
-    const res = await axios.get("/api/message");
-    setResult(res.data.message);
+  function skipForward() {
+    videoRef.current.currentTime += 5;
   }
 
-  async function postMessage() {
-    const res = await axios.post("/api/message", {
-      word: "website"
-    });
+  function skipBackward() {
+    videoRef.current.currentTime -= 5;
+  }
 
-    setResult(res.data.message);
+  function handleTimeUpdate() {
+    setCurrentTime(videoRef.current.currentTime);
+  }
+
+  function formatTime(seconds) {
+    const min = Math.floor(seconds / 60);
+    const sec = Math.floor(seconds % 60);
+
+    return `${min}:${sec.toString().padStart(2, "0")}`;
   }
 
   return (
     <div>
-      <h1>Website</h1>
+      <h1>Video Player</h1>
 
-      <button onClick={getMessage}>GET from server</button>
-      <button onClick={postMessage}>POST to server</button>
+      <video
+        ref={videoRef}
+        src={videoFile}
+        controls
+        width="600"
+        onTimeUpdate={handleTimeUpdate}
+      />
 
-      <p>{result}</p>
+      <div>
+        <button onClick={skipBackward}>Back 5 sec</button>
+        <button onClick={skipForward}>Forward 5 sec</button>
+      </div>
+
+      <p>Current Time: {formatTime(currentTime)}</p>
     </div>
   );
 }
