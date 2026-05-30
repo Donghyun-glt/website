@@ -1,16 +1,41 @@
 import { useRef, useState } from "react";
-import videoFile from "./video.mp4";
+import VoiceCommand from "./VoiceCommand";
 
 function App() {
   const videoRef = useRef(null);
+
+  const [videoURL, setVideoURL] = useState("");
   const [currentTime, setCurrentTime] = useState(0);
 
+  function handleVideoUpload(event) {
+    const file = event.target.files[0];
+
+    if (!file) {
+      return;
+    }
+
+    const url = URL.createObjectURL(file);
+    setVideoURL(url);
+    setCurrentTime(0);
+  }
+
   function skipForward() {
+    if (!videoRef.current) {
+      return;
+    }
+
     videoRef.current.currentTime += 5;
   }
 
   function skipBackward() {
-    videoRef.current.currentTime -= 5;
+    if (!videoRef.current) {
+      return;
+    }
+
+    videoRef.current.currentTime = Math.max(
+      videoRef.current.currentTime - 5,
+      0
+    );
   }
 
   function handleTimeUpdate() {
@@ -28,20 +53,35 @@ function App() {
     <div>
       <h1>Video Player</h1>
 
-      <video
-        ref={videoRef}
-        src={videoFile}
-        controls
-        width="600"
-        onTimeUpdate={handleTimeUpdate}
+      <input
+        type="file"
+        accept="video/*"
+        onChange={handleVideoUpload}
       />
 
-      <div>
-        <button onClick={skipBackward}>Back 7777 sec</button>
-        <button onClick={skipForward}>Forward 7777 sec</button>
-      </div>
+      {videoURL && (
+        <>
+          <br />
+          <br />
 
-      <p>Current Time: {formatTime(currentTime)}</p>
+          <video
+            ref={videoRef}
+            src={videoURL}
+            controls
+            width="600"
+            onTimeUpdate={handleTimeUpdate}
+          />
+
+          <div>
+            <button onClick={skipBackward}>Back 5 sec</button>
+            <button onClick={skipForward}>Forward 5 sec</button>
+          </div>
+
+          <p>Current Time: {formatTime(currentTime)}</p>
+
+          <VoiceCommand />
+        </>
+      )}
     </div>
   );
 }
