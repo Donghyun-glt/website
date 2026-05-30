@@ -75,7 +75,11 @@ Do not mention that you cannot see the video.
 
     if (!response.ok) {
       const errorText = await response.text();
+
+      console.error("OpenAI Realtime API error:");
+      console.error("Status:", response.status);
       console.error(errorText);
+
       return res.status(500).send(errorText);
     }
 

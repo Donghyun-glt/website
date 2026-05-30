@@ -66,12 +66,19 @@ function VoiceCommand() {
         body: offer.sdp
       });
 
-      const answerSdp = await response.text();
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error("Realtime session failed:", errorText);
+        setStatus("Voice listener failed: server error");
+        return;
+        }
 
-      await peerConnection.setRemoteDescription({
+        const answerSdp = await response.text();
+
+        await peerConnection.setRemoteDescription({
         type: "answer",
         sdp: answerSdp
-      });
+        });
 
       setStatus("Voice listener active");
     } catch (err) {
