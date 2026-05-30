@@ -37,8 +37,8 @@ function App() {
       />
 
       <div>
-        <button onClick={skipBackward}>Back 5 sec</button>
-        <button onClick={skipForward}>Forward 5 sec</button>
+        <button onClick={skipBackward}>Back 7777 sec</button>
+        <button onClick={skipForward}>Forward 7777 sec</button>
       </div>
 
       <p>Current Time: {formatTime(currentTime)}</p>
