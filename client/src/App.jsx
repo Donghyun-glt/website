@@ -47,21 +47,14 @@ function App() {
 
 		const ctx = canvas.getContext("2d");
 
-		canvas.width = video.videoWidth;
-		canvas.height = video.videoHeight;
+		canvas.width = 640;
+		canvas.height = 360;
 
-
-
-
-		// draw the frame
+		// draw smaller frame
 		ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-
-
-
-		// convert the drawing to image
-		const imageDataURL = canvas.toDataURL("image/jpeg");
-
+		// convert to compressed image
+		const imageDataURL = canvas.toDataURL("image/jpeg", 0.6);
 
 
 
