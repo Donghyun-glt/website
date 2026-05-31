@@ -10,7 +10,7 @@ const app = express();
 const PORT = 8000;
 
 app.use(cors());
-app.use(express.json({ limit: "20mb" }));
+app.use(express.json());
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY

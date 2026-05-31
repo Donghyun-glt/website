@@ -187,8 +187,11 @@ function App() {
 						ref={videoRef}
 						src={videoURL}
 						controls
+						width="600"
 						className="video"
 					/>
+
+
 
 					<div className="buttons">
 						<button onClick={skipBackward}>-5 sec</button>
@@ -220,7 +223,7 @@ function App() {
 				</div>
 			)}
 
-			<canvas ref={canvasRef} className="hidden-canvas" />
+			<canvas ref={canvasRef} width="600" className="hidden-canvas" />
 		</div>
 	);
 }
