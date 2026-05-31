@@ -16,10 +16,6 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
 });
 
-app.get("/", (req, res) => {
-  res.send("Video explainer server running");
-});
-
 app.post("/api/explain-frame", async (req, res) => {
   try {
     const { image } = req.body;
