@@ -2,207 +2,227 @@ import { useEffect, useRef, useState } from "react";
 import axios from "axios";
 import "./App.css";
 
-const API = "http://localhost:8000";
-
 function App() {
-  const videoRef = useRef(null);
-  const canvasRef = useRef(null);
-  const recognitionRef = useRef(null);
+	const videoRef = useRef(null);
+	const canvasRef = useRef(null);
+	const recognitionRef = useRef(null);
 
-  const [videoURL, setVideoURL] = useState("");
-  const [status, setStatus] = useState("Choose a video file.");
-  const [listening, setListening] = useState(false);
-  const [explanation, setExplanation] = useState("");
+	const [videoURL, setVideoURL] = useState("");
+	const [status, setStatus] = useState("Choose a video file.");
+	const [listening, setListening] = useState(false);
+	const [explanation, setExplanation] = useState("");
 
-  function handleVideoFile(e) {
-    const file = e.target.files[0];
+	function handleVideoFile(e) {
+		const file = e.target.files[0];
 
-    if (!file) return;
+		if (!file) return;
 
-    const url = URL.createObjectURL(file);
-    setVideoURL(url);
-    setStatus("Video loaded.");
-  }
+		const url = URL.createObjectURL(file);
+		setVideoURL(url);
+		setStatus("Video loaded.");
+	}
 
-  function skipForward() {
-    const video = videoRef.current;
-    if (!video) return;
+	function skipForward() {
+		const video = videoRef.current;
+		if (!video) return;
 
-    video.currentTime += 5;
-  }
+		video.currentTime += 5;
+	}
 
-  function skipBackward() {
-    const video = videoRef.current;
-    if (!video) return;
+	function skipBackward() {
+		const video = videoRef.current;
+		if (!video) return;
 
-    video.currentTime = Math.max(0, video.currentTime - 5);
-  }
+		video.currentTime = Math.max(0, video.currentTime - 5);
+	}
 
-  async function explainCurrentFrame() {
-    const video = videoRef.current;
-    const canvas = canvasRef.current;
+	async function explainCurrentFrame() {
+		const video = videoRef.current;
+		const canvas = canvasRef.current;
 
-    if (!video || !canvas) return;
+		if (!video || !canvas) return;
 
-    video.pause();
-    setStatus("Capturing current frame...");
+		video.pause();
+		setStatus("Capturing current frame...");
 
-    const ctx = canvas.getContext("2d");
+		const ctx = canvas.getContext("2d");
 
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
+		canvas.width = video.videoWidth;
+		canvas.height = video.videoHeight;
 
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-    const imageDataURL = canvas.toDataURL("image/jpeg");
 
-    try {
-      setStatus("Asking VLM to explain the frame...");
 
-      const res = await axios.post(`${API}/api/explain-frame`, {
-        image: imageDataURL
-      });
+		// draw the frame
+		ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-      const text = res.data.explanation;
 
-      setExplanation(text);
-      setStatus("Explanation ready.");
 
-      speak(text);
-    } catch (err) {
-      console.error(err);
-      setStatus("Error explaining frame.");
-    }
-  }
 
-  function speak(text) {
-    window.speechSynthesis.cancel();
+		// convert the drawing to image
+		const imageDataURL = canvas.toDataURL("image/jpeg");
 
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = "en-US";
-    utterance.rate = 1;
 
-    window.speechSynthesis.speak(utterance);
-  }
 
-  function startVoiceDetector() {
-    const SpeechRecognition =
-      window.SpeechRecognition || window.webkitSpeechRecognition;
 
-    if (!SpeechRecognition) {
-      setStatus("SpeechRecognition is not supported in this browser.");
-      return;
-    }
 
-    const recognition = new SpeechRecognition();
+		try {
+			setStatus("Asking VLM to explain the frame...");
 
-    recognition.lang = "en-US";
-    recognition.continuous = true;
-    recognition.interimResults = false;
+			const res = await axios.post("/api/explain-frame", {
+				image: imageDataURL
+			});
+			const text = res.data.explanation;
 
-    recognition.onresult = (event) => {
-      const lastResult = event.results[event.results.length - 1];
-      const transcript = lastResult[0].transcript.trim().toLowerCase();
+			setExplanation(text);
+			setStatus("Explanation ready.");
 
-      console.log("Heard:", transcript);
+			speak(text);
+		} catch (err) {
+			console.error(err);
+			setStatus("Error explaining frame.");
+		}
+	}
 
-      if (transcript.includes("explain")) {
-        explainCurrentFrame();
-      }
-    };
+	function speak(text) {
 
-    recognition.onerror = (event) => {
-      console.error(event.error);
-      setStatus(`Voice error: ${event.error}`);
-    };
+		// Avoid overlapping voices.
+		window.speechSynthesis.cancel();
 
-    recognition.onend = () => {
-      if (listening) {
-        recognition.start();
-      }
-    };
+		// speech object 
+		const utterance = new SpeechSynthesisUtterance(text);
+		utterance.lang = "en-US";
+		// normal speech speed
+		utterance.rate = 1;
 
-    recognition.start();
-    recognitionRef.current = recognition;
+		// Browser reads text aloud.
+		window.speechSynthesis.speak(utterance);
+	}
 
-    setListening(true);
-    setStatus('Listening for "explain"...');
-  }
+	function startVoiceDetector() {
+		const SpeechRecognition =
+			window.SpeechRecognition || window.webkitSpeechRecognition;
 
-  function stopVoiceDetector() {
-    if (recognitionRef.current) {
-      recognitionRef.current.stop();
-      recognitionRef.current = null;
-    }
+		if (!SpeechRecognition) {
+			setStatus("SpeechRecognition is not supported in this browser.");
+			return;
+		}
 
-    setListening(false);
-    setStatus("Voice detector stopped.");
-  }
+		const recognition = new SpeechRecognition();
 
-  useEffect(() => {
-    return () => {
-      if (recognitionRef.current) {
-        recognitionRef.current.stop();
-      }
+		recognition.lang = "en-US";
+		// Keeps listening.
+		recognition.continuous = true;
+		// Avoid partial transcripts.
+		recognition.interimResults = false;
 
-      if (videoURL) {
-        URL.revokeObjectURL(videoURL);
-      }
-    };
-  }, [videoURL]);
+		// Runs whenever speech is recognized.
+		recognition.onresult = (event) => {
+			const lastResult = event.results[event.results.length - 1];
+			const transcript = lastResult[0].transcript.trim().toLowerCase();
 
-  return (
-    <div className="app">
-      <h1>Video Explainer</h1>
+			console.log("The browser heard:", transcript);
 
-      <input
-        type="file"
-        accept="video/*"
-        onChange={handleVideoFile}
-      />
+			if (transcript.includes("explain")) {
+				explainCurrentFrame();
+			}
+		};
 
-      {videoURL && (
-        <>
-          <video
-            ref={videoRef}
-            src={videoURL}
-            controls
-            className="video"
-          />
+		recognition.onerror = (event) => {
+			console.error(event.error);
+			setStatus(`Voice error: ${event.error}`);
+		};
 
-          <div className="buttons">
-            <button onClick={skipBackward}>-5 sec</button>
-            <button onClick={skipForward}>+5 sec</button>
+		recognition.onend = () => {
+			if (listening) {
+				recognition.start();
+			}
+		};
 
-            {!listening ? (
-              <button onClick={startVoiceDetector}>
-                Start Voice Detector
-              </button>
-            ) : (
-              <button onClick={stopVoiceDetector}>
-                Stop Voice Detector
-              </button>
-            )}
+		// microphone becomes active
+		recognition.start();
+		recognitionRef.current = recognition;
 
-            <button onClick={explainCurrentFrame}>
-              Explain Now
-            </button>
-          </div>
-        </>
-      )}
+		setListening(true);
+		setStatus('Listening for "explain"...');
+	}
 
-      <p className="status">{status}</p>
+	function stopVoiceDetector() {
+		if (recognitionRef.current) {
+			recognitionRef.current.stop();
+			recognitionRef.current = null;
+		}
 
-      {explanation && (
-        <div className="explanation">
-          <h2>Explanation</h2>
-          <p>{explanation}</p>
-        </div>
-      )}
+		setListening(false);
+		setStatus("Voice detector stopped.");
+	}
 
-      <canvas ref={canvasRef} className="hidden-canvas" />
-    </div>
-  );
+	// Runs when component mounts and unmounts.
+	useEffect(() => {
+		return () => {
+			if (recognitionRef.current) {
+				recognitionRef.current.stop();
+			}
+
+			if (videoURL) {
+				// Free video memory
+				URL.revokeObjectURL(videoURL);
+			}
+		};
+	}, [videoURL]);
+
+	return (
+		<div className="app">
+			<h1>Video Explainer</h1>
+
+			<input
+				type="file"
+				accept="video/*"
+				onChange={handleVideoFile}
+			/>
+
+			{videoURL && (
+				<>
+					<video
+						ref={videoRef}
+						src={videoURL}
+						controls
+						className="video"
+					/>
+
+					<div className="buttons">
+						<button onClick={skipBackward}>-5 sec</button>
+						<button onClick={skipForward}>+5 sec</button>
+
+						{!listening ? (
+							<button onClick={startVoiceDetector}>
+								Start Voice Detector
+							</button>
+						) : (
+							<button onClick={stopVoiceDetector}>
+								Stop Voice Detector
+							</button>
+						)}
+
+						<button onClick={explainCurrentFrame}>
+							Explain Now
+						</button>
+					</div>
+				</>
+			)}
+
+			<p className="status">{status}</p>
+
+			{explanation && (
+				<div className="explanation">
+					<h2>Explanation</h2>
+					<p>{explanation}</p>
+				</div>
+			)}
+
+			<canvas ref={canvasRef} className="hidden-canvas" />
+		</div>
+	);
 }
 
 export default App;

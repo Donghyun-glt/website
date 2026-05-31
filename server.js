@@ -54,44 +54,6 @@ app.post("/api/explain-frame", async (req, res) => {
   }
 });
 
-app.post("/api/explain-frame", async (req, res) => {
-  try {
-    const { image } = req.body;
-
-    if (!image) {
-      return res.status(400).json({ error: "Image is required" });
-    }
-
-    const response = await openai.responses.create({
-      model: "gpt-4.1-mini",
-      input: [
-        {
-          role: "user",
-          content: [
-            {
-              type: "input_text",
-              text: "Briefly explain what is happening in this video frame. Use simple language."
-            },
-            {
-              type: "input_image",
-              image_url: image
-            }
-          ]
-        }
-      ]
-    });
-
-    res.json({
-      explanation: response.output_text
-    });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({
-      error: "Failed to explain frame"
-    });
-  }
-});
-
 // serve React public website from client/dist
 app.use(express.static(path.join(__dirname, "client", "dist")));
 
