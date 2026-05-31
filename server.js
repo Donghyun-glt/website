@@ -1,107 +1,108 @@
 const express = require("express");
 const path = require("path");
-require("dotenv").config();
+const dotenv = require("dotenv");
+const OpenAI = require("openai");
+const cors = require("cors");
+
+dotenv.config();
 
 const app = express();
+const PORT = 8000;
 
-app.use(express.json());
+app.use(cors());
+app.use(express.json({ limit: "20mb" }));
 
-// This is needed because WebRTC sends SDP text, not JSON.
-app.use(express.text({ type: ["application/sdp", "text/plain"] }));
-
-app.get("/api/message", (req, res) => {
-  res.json({ message: "Hello from GET" });
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY
 });
 
-app.post("/api/message", (req, res) => {
-  const { word } = req.body;
-
-  res.json({
-    message: `You sent: ${word}`
-  });
+app.get("/", (req, res) => {
+  res.send("Video explainer server running");
 });
 
-// OpenAI Realtime WebRTC session
-app.post("/api/realtime-session", async (req, res) => {
+app.post("/api/explain-frame", async (req, res) => {
   try {
-    const sessionConfig = JSON.stringify({
-      type: "realtime",
-      model: "gpt-realtime-2",
+    const { image } = req.body;
 
-      instructions: `
-You are a voice trigger for a video player.
-
-You are always listening.
-
-Only respond when the user asks about what is currently shown in the video.
-Examples:
-- "What do you see in the video?"
-- "What is showing in the video?"
-- "Can you see what's in the video?"
-- "Tell me what is happening in the video."
-
-If the user's speech conveys that intention, respond exactly:
-I'm listening
-
-For all other speech, do not respond.
-Do not explain.
-Do not mention that you cannot see the video.
-      `,
-
-      audio: {
-        input: {
-          turn_detection: {
-            type: "server_vad"
-          }
-        },
-        output: {
-          voice: "marin"
-        }
-      }
-    });
-
-    const formData = new FormData();
-    formData.set("sdp", req.body);
-    formData.set("session", sessionConfig);
-
-    const response = await fetch("https://api.openai.com/v1/realtime/calls", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-        "OpenAI-Safety-Identifier": "video-player-demo-user"
-      },
-      body: formData
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-
-      console.error("OpenAI Realtime API error:");
-      console.error("Status:", response.status);
-      console.error(errorText);
-
-      return res.status(500).send(errorText);
+    if (!image) {
+      return res.status(400).json({ error: "Image is required" });
     }
 
-    const answerSdp = await response.text();
-    res.type("application/sdp").send(answerSdp);
+    const response = await openai.responses.create({
+      model: "gpt-4.1-mini",
+      input: [
+        {
+          role: "user",
+          content: [
+            {
+              type: "input_text",
+              text: "Briefly explain what is happening in this video frame. Use simple language."
+            },
+            {
+              type: "input_image",
+              image_url: image
+            }
+          ]
+        }
+      ]
+    });
+
+    res.json({
+      explanation: response.output_text
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({
-      error: "Failed to create realtime session"
+      error: "Failed to explain frame"
     });
   }
 });
 
-// Serve React production build
+app.post("/api/explain-frame", async (req, res) => {
+  try {
+    const { image } = req.body;
+
+    if (!image) {
+      return res.status(400).json({ error: "Image is required" });
+    }
+
+    const response = await openai.responses.create({
+      model: "gpt-4.1-mini",
+      input: [
+        {
+          role: "user",
+          content: [
+            {
+              type: "input_text",
+              text: "Briefly explain what is happening in this video frame. Use simple language."
+            },
+            {
+              type: "input_image",
+              image_url: image
+            }
+          ]
+        }
+      ]
+    });
+
+    res.json({
+      explanation: response.output_text
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({
+      error: "Failed to explain frame"
+    });
+  }
+});
+
+// serve React public website from client/dist
 app.use(express.static(path.join(__dirname, "client", "dist")));
 
-app.get("/{*splat}", (req, res) => {
+app.get(/.*/, (req, res) => {
   res.sendFile(path.join(__dirname, "client", "dist", "index.html"));
 });
 
-const PORT = process.env.PORT || 3000;
-
 app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+  console.log(`Server running on http://localhost:${PORT}`);
 });
