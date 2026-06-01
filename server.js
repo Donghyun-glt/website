@@ -111,12 +111,13 @@ function extractAudioFromVideo(videoPath, audioPath) {
     return new Promise((resolve, reject) => {
         ffmpeg(videoPath)
             .noVideo()
-            .audioCodec("libmp3lame")
+            .audioCodec("pcm_s16le")
             .audioFrequency(16000)
             .audioChannels(1)
-            .save(audioPath)
+            .format("wav")
             .on("end", resolve)
-            .on("error", reject);
+            .on("error", reject)
+            .save(audioPath);
     });
 }
 
@@ -254,7 +255,7 @@ app.post("/api/analyze-video", upload.single("video"), async (req, res) => {
         }
 
         videoPath = req.file.path;
-        audioPath = path.join(os.tmpdir(), `${req.file.filename}.mp3`);
+        audioPath = path.join(os.tmpdir(), `${req.file.filename}.wav`);
 
         console.log("Extracting audio...");
         await extractAudioFromVideo(videoPath, audioPath);
