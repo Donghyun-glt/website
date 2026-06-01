@@ -84,6 +84,7 @@ const dotenv = require("dotenv");
 const OpenAI = require("openai");
 const ffmpeg = require("fluent-ffmpeg");
 const ffmpegPath = require("ffmpeg-static");
+const { spawn } = require("child_process");
 
 
 dotenv.config();
@@ -109,15 +110,34 @@ const upload = multer({
 
 function extractAudioFromVideo(videoPath, audioPath) {
     return new Promise((resolve, reject) => {
-        ffmpeg(videoPath)
-            .noVideo()
-            .audioCodec("pcm_s16le")
-            .audioFrequency(16000)
-            .audioChannels(1)
-            .format("wav")
-            .on("end", resolve)
-            .on("error", reject)
-            .save(audioPath);
+        const args = [
+            "-y",
+            "-i", videoPath,
+            "-vn",
+            "-ac", "1",
+            "-ar", "16000",
+            "-c:a", "pcm_s16le",
+            "-f", "wav",
+            audioPath
+        ];
+
+        console.log("Running ffmpeg:", ffmpegPath, args.join(" "));
+
+        const ff = spawn(ffmpegPath, args);
+
+        let errorOutput = "";
+
+        ff.stderr.on("data", (data) => {
+            errorOutput += data.toString();
+        });
+
+        ff.on("close", (code) => {
+            if (code === 0) {
+                resolve();
+            } else {
+                reject(new Error(`ffmpeg failed with code ${code}: ${errorOutput}`));
+            }
+        });
     });
 }
 
