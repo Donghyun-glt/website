@@ -84,6 +84,7 @@ const dotenv = require("dotenv");
 const OpenAI = require("openai");
 const ffmpeg = require("fluent-ffmpeg");
 const ffmpegPath = require("ffmpeg-static");
+const os = require("os");
 
 dotenv.config();
 
@@ -100,8 +101,10 @@ app.use(cors());
 app.use(express.json({ limit: "20mb" }));
 
 // when a file is uploaded, save it inside uploads/
+const os = require("os");
+
 const upload = multer({
-    dest: "uploads/"
+  dest: os.tmpdir()
 });
 
 function extractAudioFromVideo(videoPath, audioPath) {
@@ -251,7 +254,7 @@ app.post("/api/analyze-video", upload.single("video"), async (req, res) => {
         }
 
         videoPath = req.file.path;
-        audioPath = `${req.file.path}.mp3`;
+        audioPath = path.join(os.tmpdir(), `${req.file.filename}.mp3`);
 
         console.log("Extracting audio...");
         await extractAudioFromVideo(videoPath, audioPath);
