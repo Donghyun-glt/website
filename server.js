@@ -283,7 +283,7 @@ app.post("/api/analyze-video", upload.single("video"), async (req, res) => {
         console.log("Transcribing audio...");
         const transcription = await openai.audio.transcriptions.create({
             file: fs.createReadStream(audioPath),
-            model: "gpt-4o-mini-transcribe",
+            model: "whisper-1",
             response_format: "verbose_json",
             timestamp_granularities: ["word"]
         });
