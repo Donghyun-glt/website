@@ -84,7 +84,7 @@ const dotenv = require("dotenv");
 const OpenAI = require("openai");
 const ffmpeg = require("fluent-ffmpeg");
 const ffmpegPath = require("ffmpeg-static");
-const os = require("os");
+
 
 dotenv.config();
 
