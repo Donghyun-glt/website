@@ -211,6 +211,10 @@ app.post("/api/analyze-video", upload.single("video"), async (req, res) => {
             timestamp_granularities: ["word"]
         });
 
+
+        console.log("FULL TRANSCRIPTION:");
+        console.log(JSON.stringify(transcription, null, 2));
+
         const words = transcription.words || [];
         const fullTranscript = cleanTranscriptText(transcription.text || "");
 
@@ -244,8 +248,7 @@ app.post("/api/analyze-video", upload.single("video"), async (req, res) => {
         }
     }
 
-    console.log("FULL TRANSCRIPTION:");
-    console.log(JSON.stringify(transcription, null, 2));
+
 });
 
 // serve React website from client/dist
