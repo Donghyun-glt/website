@@ -32,11 +32,10 @@ function App() {
       const formData = new FormData();
       formData.append("video", videoFile);
 
-      const response = await axios.post("/api/analyze-video", formData, {
-        headers: {
-          "Content-Type": "multipart/form-data"
-        }
-      });
+      const response = await axios.post(
+        "http://localhost:8000/api/analyze-video",
+        formData
+      );
 
       setTranscript(response.data.transcript);
       setTimeline(response.data.timeline);
