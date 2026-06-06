@@ -179,6 +179,22 @@ function detectSilence(audioPath) {
     });
 }
 
+function calculateSilentDuration(silenceInfo, audioDuration) {
+    let totalSilent = 0;
+
+    for (let i = 0; i < silenceInfo.silenceStarts.length; i++) {
+        const start = silenceInfo.silenceStarts[i];
+
+        // If silence starts but no silence_end exists,
+        // assume silence continues until the end of the audio.
+        const end = silenceInfo.silenceEnds[i] ?? audioDuration;
+
+        totalSilent += end - start;
+    }
+
+    return totalSilent;
+}
+
 function cleanTranscriptText(text) {
     const hallucinations = [
         "thank you for watching",
