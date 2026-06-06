@@ -9,6 +9,8 @@ const OpenAI = require("openai");
 const ffmpegPath = require("ffmpeg-static");
 const { spawn } = require("child_process");
 
+
+
 dotenv.config();
 
 const app = express();
@@ -21,7 +23,14 @@ const openai = new OpenAI({
 app.use(cors());
 app.use(express.json({ limit: "20mb" }));
 
-// uploaded video is temporarily saved in OS temp folder
+app.use("/debug-audio", express.static(path.join(__dirname, "debug-audio")));
+
+const debugAudioDir = path.join(__dirname, "debug-audio");
+
+if (!fs.existsSync(debugAudioDir)) {
+    fs.mkdirSync(debugAudioDir);
+}
+
 const upload = multer({
     dest: os.tmpdir()
 });
@@ -60,6 +69,81 @@ function extractAudioFromVideo(videoPath, audioPath) {
     });
 }
 
+/*
+  Get audio duration using ffmpeg
+*/
+function getAudioDuration(audioPath) {
+    return new Promise((resolve, reject) => {
+        const args = [
+            "-i", audioPath,
+            "-f", "null",
+            "-"
+        ];
+
+        const ffmpeg = spawn(ffmpegPath, args);
+
+        let output = "";
+
+        ffmpeg.stderr.on("data", data => {
+            output += data.toString();
+        });
+
+        ffmpeg.on("close", () => {
+            const match = output.match(/Duration: (\d+):(\d+):(\d+\.\d+)/);
+
+            if (!match) {
+                return resolve(0);
+            }
+
+            const hours = Number(match[1]);
+            const minutes = Number(match[2]);
+            const seconds = Number(match[3]);
+
+            resolve(hours * 3600 + minutes * 60 + seconds);
+        });
+
+        ffmpeg.on("error", reject);
+    });
+}
+
+/*
+  Check if audio is basically silent.
+  mean_volume is usually like:
+  -20 dB = audible
+  -40 dB = quiet but possibly speech
+  -60 dB = almost silent
+*/
+function getMeanVolume(audioPath) {
+    return new Promise((resolve, reject) => {
+        const args = [
+            "-i", audioPath,
+            "-af", "volumedetect",
+            "-f", "null",
+            "-"
+        ];
+
+        const ffmpeg = spawn(ffmpegPath, args);
+
+        let output = "";
+
+        ffmpeg.stderr.on("data", data => {
+            output += data.toString();
+        });
+
+        ffmpeg.on("close", () => {
+            const match = output.match(/mean_volume:\s*(-?\d+(\.\d+)?) dB/);
+
+            if (!match) {
+                return resolve(null);
+            }
+
+            resolve(Number(match[1]));
+        });
+
+        ffmpeg.on("error", reject);
+    });
+}
+
 function cleanTranscriptText(text) {
     const hallucinations = [
         "thank you for watching",
@@ -78,22 +162,6 @@ function cleanTranscriptText(text) {
     return text;
 }
 
-/*
-  Whisper words -> timeline intervals
-
-  Example:
-  words:
-  [
-    { word: "hello", start: 1, end: 2 },
-    { word: "there", start: 2.2, end: 3 }
-  ]
-
-  result:
-  [
-    { start: 0, end: 1, type: "silent", text: "" },
-    { start: 1, end: 3, type: "speech", text: "hello there" }
-  ]
-*/
 function buildTimelineFromWords(words, videoDuration) {
     const timeline = [];
 
@@ -101,7 +169,7 @@ function buildTimelineFromWords(words, videoDuration) {
         return [
             {
                 start: 0,
-                end: videoDuration || 0,
+                end: Number((videoDuration || 0).toFixed(2)),
                 type: "silent",
                 text: ""
             }
@@ -110,7 +178,6 @@ function buildTimelineFromWords(words, videoDuration) {
 
     const gapThreshold = 1.0;
 
-    // silence before first spoken word
     if (words[0].start > 0.3) {
         timeline.push({
             start: 0,
@@ -154,7 +221,6 @@ function buildTimelineFromWords(words, videoDuration) {
         }
     }
 
-    // final speech interval
     timeline.push({
         start: Number(currentStart.toFixed(2)),
         end: Number(currentEnd.toFixed(2)),
@@ -162,7 +228,6 @@ function buildTimelineFromWords(words, videoDuration) {
         text: currentText.join(" ")
     });
 
-    // silence after final spoken word
     const lastWord = words[words.length - 1];
 
     if (videoDuration && videoDuration - lastWord.end > 0.3) {
@@ -177,13 +242,6 @@ function buildTimelineFromWords(words, videoDuration) {
     return timeline;
 }
 
-/*
-  POST /api/analyze-video
-
-  Client sends:
-  FormData:
-    video: File
-*/
 app.post("/api/analyze-video", upload.single("video"), async (req, res) => {
     let videoPath;
     let audioPath;
@@ -202,6 +260,47 @@ app.post("/api/analyze-video", upload.single("video"), async (req, res) => {
 
         console.log("Extracting audio...");
         await extractAudioFromVideo(videoPath, audioPath);
+        
+
+        const debugAudioName = `${req.file.filename}.wav`;
+        const debugAudioPath = path.join(debugAudioDir, debugAudioName);
+
+        fs.copyFileSync(audioPath, debugAudioPath);
+
+        console.log("Debug audio saved at:");
+        console.log(`http://localhost:${PORT}/debug-audio/${debugAudioName}`);
+
+        console.log("Checking audio volume...");
+        const meanVolume = await getMeanVolume(audioPath);
+        const audioDuration = await getAudioDuration(audioPath);
+
+        console.log("Mean volume:", meanVolume, "dB");
+        console.log("Audio duration:", audioDuration, "seconds");
+
+        /*
+          IMPORTANT:
+          If mean volume is lower than -45 dB, we treat it as no useful speech.
+          You can adjust this number:
+            -35 = stricter, detects silence more aggressively
+            -50 = more permissive, sends more audio to Whisper
+        */
+        const SILENCE_THRESHOLD_DB = -45;
+
+        if (meanVolume === null || meanVolume < SILENCE_THRESHOLD_DB) {
+            console.log("Audio is too quiet. Skipping Whisper.");
+
+            return res.json({
+                transcript: "",
+                timeline: [
+                    {
+                        start: 0,
+                        end: Number(audioDuration.toFixed(2)),
+                        type: "silent",
+                        text: ""
+                    }
+                ]
+            });
+        }
 
         console.log("Sending audio to Whisper...");
         const transcription = await openai.audio.transcriptions.create({
@@ -211,18 +310,37 @@ app.post("/api/analyze-video", upload.single("video"), async (req, res) => {
             timestamp_granularities: ["word"]
         });
 
-
         console.log("FULL TRANSCRIPTION:");
         console.log(JSON.stringify(transcription, null, 2));
 
         const words = transcription.words || [];
         const fullTranscript = cleanTranscriptText(transcription.text || "");
 
-        // Whisper verbose_json often includes duration.
-        // If not, fallback to the last word end time.
         const videoDuration =
             transcription.duration ||
+            audioDuration ||
             (words.length > 0 ? words[words.length - 1].end : 0);
+
+        /*
+          If Whisper only hallucinated text like "Thank you for watching",
+          fullTranscript becomes empty.
+          In that case, return silent timeline.
+        */
+        if (fullTranscript === "") {
+            console.log("Transcript looked like hallucination. Returning silent timeline.");
+
+            return res.json({
+                transcript: "",
+                timeline: [
+                    {
+                        start: 0,
+                        end: Number(videoDuration.toFixed(2)),
+                        type: "silent",
+                        text: ""
+                    }
+                ]
+            });
+        }
 
         const timeline = buildTimelineFromWords(words, videoDuration);
 
@@ -247,11 +365,8 @@ app.post("/api/analyze-video", upload.single("video"), async (req, res) => {
             fs.unlinkSync(audioPath);
         }
     }
-
-
 });
 
-// serve React website from client/dist
 app.use(express.static(path.join(__dirname, "client", "dist")));
 
 app.get(/.*/, (req, res) => {
