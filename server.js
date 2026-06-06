@@ -204,7 +204,10 @@ function cleanTranscriptText(text) {
         "subscribe"
     ];
 
-    const normalized = text.trim().toLowerCase();
+    const normalized = text
+        .trim()
+        .toLowerCase()
+        .replace(/[.,!?]/g, "");
 
     if (hallucinations.includes(normalized)) {
         return "";
