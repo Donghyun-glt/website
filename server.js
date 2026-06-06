@@ -8,7 +8,7 @@ const dotenv = require("dotenv");
 const OpenAI = require("openai");
 const ffmpegPath = require("ffmpeg-static");
 const { spawn } = require("child_process");
-
+const VAD = require("node-vad");
 
 
 dotenv.config();
@@ -195,6 +195,50 @@ function calculateSilentDuration(silenceInfo, audioDuration) {
     return totalSilent;
 }
 
+async function detectVoiceActivity(audioPath) {
+    const vad = new VAD(VAD.Mode.NORMAL);
+
+    const wavBuffer = fs.readFileSync(audioPath);
+
+    // Your ffmpeg output is normal WAV:
+    // 44-byte WAV header + raw PCM audio data
+    const pcmBuffer = wavBuffer.slice(44);
+
+    const sampleRate = 16000;
+    const bytesPerSample = 2; // 16-bit audio
+    const frameDurationMs = 30;
+
+    const frameSize =
+        sampleRate *
+        bytesPerSample *
+        frameDurationMs / 1000;
+
+    let speechFrames = 0;
+    let totalFrames = 0;
+
+    for (let i = 0; i + frameSize <= pcmBuffer.length; i += frameSize) {
+        const frame = pcmBuffer.slice(i, i + frameSize);
+
+        const result = await vad.processAudio(frame, sampleRate);
+
+        totalFrames++;
+
+        if (result === VAD.Event.VOICE) {
+            speechFrames++;
+        }
+    }
+
+    const speechRatio =
+        totalFrames > 0 ? speechFrames / totalFrames : 0;
+
+    return {
+        speechFrames,
+        totalFrames,
+        speechRatio,
+        hasSpeech: speechFrames >= 3 && speechRatio > 0.05
+    };
+}
+
 function cleanTranscriptText(text) {
     const hallucinations = [
         "thank you for watching",
@@ -323,27 +367,17 @@ app.post("/api/analyze-video", upload.single("video"), async (req, res) => {
         console.log("Debug audio saved at:");
         console.log(`http://localhost:${PORT}/debug-audio/${debugAudioName}`);
 
-        console.log("Checking audio volume and silence...");
-        const meanVolume = await getMeanVolume(audioPath);
+        console.log("Checking audio duration...");
         const audioDuration = await getAudioDuration(audioPath);
-        const silenceInfo = await detectSilence(audioPath);
 
-        const silentDuration = calculateSilentDuration(silenceInfo, audioDuration);
-        const silentRatio = audioDuration > 0 ? silentDuration / audioDuration : 1;
+        console.log("Running VAD speech detection...");
+        const vadResult = await detectVoiceActivity(audioPath);
 
-        console.log("Mean volume:", meanVolume, "dB");
-        console.log("Audio duration:", audioDuration, "seconds");
-        console.log("Silent duration:", silentDuration, "seconds");
-        console.log("Silent ratio:", silentRatio);
+        console.log("VAD result:");
+        console.log(vadResult);
 
-        const SILENCE_THRESHOLD_DB = -45;
-
-        if (
-            meanVolume === null ||
-            meanVolume < SILENCE_THRESHOLD_DB ||
-            silentRatio > 0.9
-        ) {
-            console.log("No reliable speech detected. Skipping Whisper.");
+        if (!vadResult.hasSpeech) {
+            console.log("No human speech detected. Skipping Whisper.");
 
             return res.json({
                 transcript: "",
@@ -358,7 +392,8 @@ app.post("/api/analyze-video", upload.single("video"), async (req, res) => {
             });
         }
 
-        console.log("Sending audio to Whisper...");
+        console.log("Human speech detected. Sending audio to Whisper...");
+
         const transcription = await openai.audio.transcriptions.create({
             file: fs.createReadStream(audioPath),
             model: "whisper-1",
