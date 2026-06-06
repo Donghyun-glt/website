@@ -144,6 +144,41 @@ function getMeanVolume(audioPath) {
     });
 }
 
+function detectSilence(audioPath) {
+    return new Promise((resolve, reject) => {
+        const args = [
+            "-i", audioPath,
+            "-af", "silencedetect=noise=-35dB:d=0.5",
+            "-f", "null",
+            "-"
+        ];
+
+        const ffmpeg = spawn(ffmpegPath, args);
+
+        let output = "";
+
+        ffmpeg.stderr.on("data", data => {
+            output += data.toString();
+        });
+
+        ffmpeg.on("close", () => {
+            const silenceStarts = [...output.matchAll(/silence_start: ([\d.]+)/g)]
+                .map(match => Number(match[1]));
+
+            const silenceEnds = [...output.matchAll(/silence_end: ([\d.]+)/g)]
+                .map(match => Number(match[1]));
+
+            resolve({
+                rawOutput: output,
+                silenceStarts,
+                silenceEnds
+            });
+        });
+
+        ffmpeg.on("error", reject);
+    });
+}
+
 function cleanTranscriptText(text) {
     const hallucinations = [
         "thank you for watching",
@@ -260,7 +295,6 @@ app.post("/api/analyze-video", upload.single("video"), async (req, res) => {
 
         console.log("Extracting audio...");
         await extractAudioFromVideo(videoPath, audioPath);
-        
 
         const debugAudioName = `${req.file.filename}.wav`;
         const debugAudioPath = path.join(debugAudioDir, debugAudioName);
@@ -270,24 +304,27 @@ app.post("/api/analyze-video", upload.single("video"), async (req, res) => {
         console.log("Debug audio saved at:");
         console.log(`http://localhost:${PORT}/debug-audio/${debugAudioName}`);
 
-        console.log("Checking audio volume...");
+        console.log("Checking audio volume and silence...");
         const meanVolume = await getMeanVolume(audioPath);
         const audioDuration = await getAudioDuration(audioPath);
+        const silenceInfo = await detectSilence(audioPath);
+
+        const silentDuration = calculateSilentDuration(silenceInfo, audioDuration);
+        const silentRatio = audioDuration > 0 ? silentDuration / audioDuration : 1;
 
         console.log("Mean volume:", meanVolume, "dB");
         console.log("Audio duration:", audioDuration, "seconds");
+        console.log("Silent duration:", silentDuration, "seconds");
+        console.log("Silent ratio:", silentRatio);
 
-        /*
-          IMPORTANT:
-          If mean volume is lower than -45 dB, we treat it as no useful speech.
-          You can adjust this number:
-            -35 = stricter, detects silence more aggressively
-            -50 = more permissive, sends more audio to Whisper
-        */
         const SILENCE_THRESHOLD_DB = -45;
 
-        if (meanVolume === null || meanVolume < SILENCE_THRESHOLD_DB) {
-            console.log("Audio is too quiet. Skipping Whisper.");
+        if (
+            meanVolume === null ||
+            meanVolume < SILENCE_THRESHOLD_DB ||
+            silentRatio > 0.9
+        ) {
+            console.log("No reliable speech detected. Skipping Whisper.");
 
             return res.json({
                 transcript: "",
@@ -321,11 +358,6 @@ app.post("/api/analyze-video", upload.single("video"), async (req, res) => {
             audioDuration ||
             (words.length > 0 ? words[words.length - 1].end : 0);
 
-        /*
-          If Whisper only hallucinated text like "Thank you for watching",
-          fullTranscript becomes empty.
-          In that case, return silent timeline.
-        */
         if (fullTranscript === "") {
             console.log("Transcript looked like hallucination. Returning silent timeline.");
 
